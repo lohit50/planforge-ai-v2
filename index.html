@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               connect-src 'self' http://localhost:*
+                           https://integrate.api.nvidia.com
+                           https://r.jina.ai https://s.jina.ai
+                           https://api.tavily.com
+                           https://cdnjs.cloudflare.com
+                           https://images.unsplash.com
+                           https://upload.wikimedia.org
+                           https://en.wikipedia.org
+                           https://ipapi.co;
+               script-src 'self' 'unsafe-inline' blob: https://cdnjs.cloudflare.com;
+               worker-src blob: 'self';
+               style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+               font-src 'self' data: https://fonts.gstatic.com;
+               img-src 'self' data: blob:;">
+    <title>PlanForge AI — Turn Anything Into Perfect PDF</title>
+    <meta name="description" content="AI-powered educational document generator. Upload PDFs, images, or type a topic. AI builds your perfect study material.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

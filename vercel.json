@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api/nvidia/:path*", "destination": "https://integrate.api.nvidia.com/v1/:path*" },
+    { "source": "/api/jina-s/:path*", "destination": "https://s.jina.ai/:path*" },
+    { "source": "/api/jina-r/:path*", "destination": "https://r.jina.ai/:path*" },
+    { "source": "/api/unsplash/:path*", "destination": "https://api.unsplash.com/:path*" }
+  ]
+}
