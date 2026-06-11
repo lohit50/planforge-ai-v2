@@ -704,10 +704,15 @@ export default function App() {
   const [pdfFiles, setPdfFiles] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
   const [apiKeys, setApiKeys] = useState(() => {
-    try {
-      const stored = sessionStorage.getItem('pf_keys');
-      if (stored) return JSON.parse(stored);
-    } catch {}
+    // If env vars provide valid keys (deployed on Vercel), always use them —
+    // prevents stale sessionStorage from a prior keyless deployment overriding.
+    const envKeysValid = NVIDIA_KEYS.some((k) => k && k.startsWith('nvapi-'));
+    if (!envKeysValid) {
+      try {
+        const stored = sessionStorage.getItem('pf_keys');
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
     return [...NVIDIA_KEYS];
   });
   const [webSearch, setWebSearch] = useState(false);
