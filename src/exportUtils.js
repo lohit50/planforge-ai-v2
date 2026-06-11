@@ -64,10 +64,52 @@ async function imgUrlToPng(url) {
   } catch { return null; }
 }
 
+// Convert LaTeX math to readable Unicode text
+function latexToReadable(tex) {
+  if (!tex) return '';
+  let s = tex;
+  // Resolve nested \frac up to 6 levels deep
+  for (let i = 0; i < 6; i++) {
+    const prev = s;
+    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)');
+    if (s === prev) break;
+  }
+  s = s
+    // Greek
+    .replace(/\\alpha/g,'α').replace(/\\beta/g,'β').replace(/\\gamma/g,'γ')
+    .replace(/\\delta/g,'δ').replace(/\\epsilon/g,'ε').replace(/\\theta/g,'θ')
+    .replace(/\\lambda/g,'λ').replace(/\\mu/g,'μ').replace(/\\nu/g,'ν')
+    .replace(/\\pi/g,'π').replace(/\\rho/g,'ρ').replace(/\\sigma/g,'σ')
+    .replace(/\\tau/g,'τ').replace(/\\phi/g,'φ').replace(/\\omega/g,'ω')
+    .replace(/\\Delta/g,'Δ').replace(/\\Sigma/g,'Σ').replace(/\\Omega/g,'Ω')
+    // Operators
+    .replace(/\\cdot/g,'·').replace(/\\times/g,'×').replace(/\\pm/g,'±')
+    .replace(/\\leq/g,'≤').replace(/\\geq/g,'≥').replace(/\\neq/g,'≠')
+    .replace(/\\approx/g,'≈').replace(/\\infty/g,'∞')
+    .replace(/\\rightarrow/g,'→').replace(/\\leftarrow/g,'←')
+    // Functions/text
+    .replace(/\\sqrt\{([^{}]+)\}/g,'√($1)')
+    .replace(/\\text\{([^{}]+)\}/g,'$1').replace(/\\mathrm\{([^{}]+)\}/g,'$1')
+    .replace(/\\ln\b/g,'ln').replace(/\\log\b/g,'log').replace(/\\exp\b/g,'exp')
+    .replace(/\\sin\b/g,'sin').replace(/\\cos\b/g,'cos').replace(/\\tan\b/g,'tan')
+    // Brackets
+    .replace(/\\left\s*\(/g,'(').replace(/\\right\s*\)/g,')')
+    .replace(/\\left\s*\[/g,'[').replace(/\\right\s*\]/g,']')
+    // Super/subscripts with braces
+    .replace(/\^{([^{}]*)}/g,'^($1)').replace(/_{([^{}]*)}/g,'_($1)')
+    .replace(/\^(-?[a-zA-Z0-9])/g,'^$1').replace(/_(-?[a-zA-Z0-9])/g,'_$1')
+    // Spacing and cleanup
+    .replace(/\\,/g,' ').replace(/\\!/g,'').replace(/\\:/g,' ').replace(/\\;/g,' ')
+    .replace(/\\\\/g,' ').replace(/\\[a-zA-Z]+/g,'')
+    .replace(/[{}]/g,'').replace(/\$+/g,'').replace(/\s{2,}/g,' ').trim();
+  return s;
+}
+
 // Strip inline markdown so raw **bold** / *italic* / `code` don't appear as literal chars in PDF
+// Also converts LaTeX math (with or without $$ delimiters) to readable Unicode
 function cleanText(t) {
   if (!t) return '';
-  return String(t)
+  let s = String(t)
     .replace(/\*\*(.*?)\*\*/gs, '$1')
     .replace(/\*(.*?)\*/gs, '$1')
     .replace(/__(.*?)__/gs, '$1')
@@ -75,7 +117,13 @@ function cleanText(t) {
     .replace(/`([^`\n]*)`/g, '$1')
     .replace(/~~(.*?)~~/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^#+\s+/gm, '');
+    .replace(/^#+\s+/gm, '')
+    // Convert $$ block math and $ inline math
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => latexToReadable(m))
+    .replace(/\$(.*?)\$/g, (_, m) => latexToReadable(m));
+  // Convert any remaining bare LaTeX (lines containing \command)
+  if (/\\\w/.test(s)) s = latexToReadable(s);
+  return s;
 }
 
 export async function fetchUnsplashCover(query) {
@@ -99,40 +147,54 @@ export async function fetchUnsplashCover(query) {
 async function renderMermaidToBase64(code) {
   try {
     const mermaid = (await import('mermaid')).default;
-    mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    // 'base' theme has no external font imports — avoids canvas taint entirely
+    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose',
+      themeVariables: { primaryColor: '#EDE9FE', primaryBorderColor: '#6C3EE8',
+        primaryTextColor: '#1A1A2E', lineColor: '#6C3EE8', fontFamily: 'helvetica,arial,sans-serif' } });
     const id = 'mmd' + Date.now() + Math.random().toString(36).slice(2, 7);
     const { svg } = await mermaid.render(id, code.trim());
 
-    // Strip external font/style references that would taint the canvas
+    // Strip any remaining external references
     const cleanSvg = svg
       .replace(/@import\s+url\([^)]*\)[^;]*;/g, '')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (m) =>
-        m.replace(/@import\s+url\([^)]*\)[^;]*;/g, '').replace(/url\(['"]?https?:[^)'"]+['"]?\)/g, '')
-      );
+        m.replace(/@import\s+url\([^)]*\)[^;]*;/g, '').replace(/url\(['"]?https?:[^)'"]+['"]?\)/g, ''));
 
-    // Use data: URL — blocks cross-origin resource loading inside the SVG,
-    // so the canvas stays clean and toDataURL never throws SecurityError
-    const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cleanSvg)}`;
+    // Extract SVG pixel dimensions from attributes or viewBox
+    // (some browsers return naturalWidth=0 for SVGs without explicit px dimensions)
+    const wAttr = cleanSvg.match(/\bwidth="([\d.]+)"/);
+    const hAttr = cleanSvg.match(/\bheight="([\d.]+)"/);
+    const vb    = cleanSvg.match(/\bviewBox="([\d.\s,-]+)"/);
+    let svgW = wAttr ? parseFloat(wAttr[1]) : 0;
+    let svgH = hAttr ? parseFloat(hAttr[1]) : 0;
+    if ((!svgW || !svgH) && vb) {
+      const parts = vb[1].trim().split(/[\s,]+/).map(parseFloat);
+      if (parts.length >= 4) { svgW = svgW || parts[2]; svgH = svgH || parts[3]; }
+    }
+    const iw = Math.max(svgW || 700, 300);
+    const ih = Math.max(svgH || 350, 100);
+
+    // Force explicit px dimensions on SVG so Image.naturalWidth is reliable
+    const sizedSvg = cleanSvg
+      .replace(/(<svg\b[^>]*)\bwidth="[^"]*"/, `$1width="${iw}"`)
+      .replace(/(<svg\b[^>]*)\bheight="[^"]*"/, `$1height="${ih}"`);
+    const finalSvg = sizedSvg.includes('width=') ? sizedSvg
+      : sizedSvg.replace('<svg', `<svg width="${iw}" height="${ih}"`);
+
+    const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(finalSvg)}`;
 
     return await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         try {
           const scale = 2;
-          const iw = Math.max(img.naturalWidth || 600, 400);
-          const ih = Math.max(img.naturalHeight || 260, 80);
           const canvas = document.createElement('canvas');
-          canvas.width = iw * scale;
-          canvas.height = ih * scale;
+          canvas.width = iw * scale; canvas.height = ih * scale;
           const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.scale(scale, scale);
-          ctx.drawImage(img, 0, 0, iw, ih);
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(scale, scale); ctx.drawImage(img, 0, 0, iw, ih);
           resolve({ base64: canvas.toDataURL('image/png'), w: iw, h: ih });
-        } catch {
-          resolve(null);
-        }
+        } catch { resolve(null); }
       };
       img.onerror = () => resolve(null);
       img.src = dataUrl;
@@ -572,7 +634,8 @@ export async function exportToPDF(title, outputType, chapters, results, options 
         }
 
         case 'equation': {
-          const eqLs = doc.splitTextToSize(seg.text, TW - 20);
+          const eqText = latexToReadable(seg.text);
+          const eqLs = doc.splitTextToSize(eqText, TW - 20);
           const eqH = eqLs.length * 6 + 12;
           y = ensureSpace(y, eqH, result.chapterName);
           doc.setFillColor(245, 243, 255); doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.4);
@@ -597,7 +660,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
             row.forEach((cell, ci) => {
               doc.setFontSize(9); doc.setFont('helvetica', ri === 0 ? 'bold' : 'normal');
               doc.setTextColor(ri === 0 ? 255 : 55, ri === 0 ? 255 : 65, ri === 0 ? 255 : 81);
-              const ct = doc.splitTextToSize(String(cell || ''), colW - 4);
+              const ct = doc.splitTextToSize(cleanText(String(cell || '')), colW - 4);
               doc.text(ct[0] || '', ML + ci * colW + 2, rY + 5);
             });
           });
