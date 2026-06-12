@@ -264,9 +264,15 @@ const MERMAID_TYPES = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDi
 async function renderMermaidToBase64(code) {
   try {
     const mermaid = await getMermaid();
-    // Normalize smart quotes and validate diagram type before rendering
+    // Normalize smart quotes and fix common AI-generated mermaid mistakes
     const cleanCode = code.trim()
-      .replace(/[""]/g, '"').replace(/['']/g, "'");
+      .replace(/[""]/g, '"').replace(/['']/g, "'")
+      // Fix: -->|label|> node  →  -->|label| node  (spurious > after closing pipe)
+      .replace(/(\|[^|]*)\|>/g, '$1|')
+      // Fix: node labels with & → and (breaks parser)
+      .replace(/\[([^\]]*?)&([^\]]*?)\]/g, (_, a, b) => `[${a} and ${b}]`)
+      // Fix: bare > or < in node labels → remove
+      .replace(/\[([^\]]*?)[<>]([^\]]*?)\]/g, (_, a, b) => `[${a}${b}]`);
     if (!MERMAID_TYPES.test(cleanCode)) return null;
     const id = 'mmd' + Date.now() + Math.random().toString(36).slice(2, 7);
     const { svg } = await mermaid.render(id, cleanCode);
