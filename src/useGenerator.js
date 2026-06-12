@@ -401,15 +401,13 @@ export function useGenerator() {
     const totalTopics = allTopics.length;
     updateStats({ totalTopics, workersActive: numWorkers });
 
-    // Distribute topics evenly across numWorkers
+    // Distribute topics evenly across numWorkers — round-robin by topic (max ±1 difference)
     const workerWork = Array.from({ length: numWorkers }, (_, i) => {
       if (splitMode === 'chapter') {
-        // Interleave chapters across workers (round-robin) for even distribution
-        return chaptersToUse
-          .filter((_, ci) => ci % numWorkers === i)
-          .flatMap((ch) => ch.topics.map((t) => ({
-            ...t, chapterId: ch.id, chapterName: ch.name, sectionTypes: null
-          })));
+        // Round-robin by topic index (not chapter) for even distribution
+        return allTopics
+          .filter((_, ti) => ti % numWorkers === i)
+          .map((t) => ({ ...t, sectionTypes: null }));
       } else {
         // Slice topics evenly
         const slice = Math.ceil(allTopics.length / numWorkers);

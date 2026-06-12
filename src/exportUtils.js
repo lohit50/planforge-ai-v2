@@ -8,44 +8,35 @@ import logoUrl from './images/logo.webp';
 // Image helpers
 // ─────────────────────────────────────────────────────────────────
 async function imgUrlToBase64(url) {
-  // Fetch as blob → data: URL so canvas is never tainted by a cross-origin img src
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (!resp.ok) return null;
     const blob = await resp.blob();
     const dataUrl = await new Promise((res, rej) => {
       const fr = new FileReader();
-      fr.onload = () => res(fr.result);
-      fr.onerror = rej;
-      fr.readAsDataURL(blob);
+      fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob);
     });
     return await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
         canvas.getContext('2d').drawImage(img, 0, 0);
         resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
       img.onerror = () => resolve(null);
       img.src = dataUrl;
     });
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
-// Like imgUrlToBase64 but outputs PNG (preserves transparency for logos)
-// Returns { base64, w, h } so callers can maintain aspect ratio
 async function imgUrlToPng(url) {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) return null;
     const blob = await resp.blob();
     const dataUrl = await new Promise((res, rej) => {
-      const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej;
-      fr.readAsDataURL(blob);
+      const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob);
     });
     return await new Promise((resolve) => {
       const img = new Image();
@@ -53,8 +44,7 @@ async function imgUrlToPng(url) {
         try {
           const c = document.createElement('canvas');
           const w = img.naturalWidth || 100; const h = img.naturalHeight || 100;
-          c.width = w; c.height = h;
-          c.getContext('2d').drawImage(img, 0, 0);
+          c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0);
           resolve({ base64: c.toDataURL('image/png'), w, h });
         } catch { resolve(null); }
       };
@@ -64,52 +54,70 @@ async function imgUrlToPng(url) {
   } catch { return null; }
 }
 
-// Convert LaTeX math to readable Unicode text
+// ─────────────────────────────────────────────────────────────────
+// Text helpers
+// ─────────────────────────────────────────────────────────────────
 function latexToReadable(tex) {
   if (!tex) return '';
   let s = tex;
-  // Resolve nested \frac up to 6 levels deep
   for (let i = 0; i < 6; i++) {
     const prev = s;
     s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)');
     if (s === prev) break;
   }
   s = s
-    // Greek
     .replace(/\\alpha/g,'α').replace(/\\beta/g,'β').replace(/\\gamma/g,'γ')
     .replace(/\\delta/g,'δ').replace(/\\epsilon/g,'ε').replace(/\\theta/g,'θ')
     .replace(/\\lambda/g,'λ').replace(/\\mu/g,'μ').replace(/\\nu/g,'ν')
     .replace(/\\pi/g,'π').replace(/\\rho/g,'ρ').replace(/\\sigma/g,'σ')
     .replace(/\\tau/g,'τ').replace(/\\phi/g,'φ').replace(/\\omega/g,'ω')
     .replace(/\\Delta/g,'Δ').replace(/\\Sigma/g,'Σ').replace(/\\Omega/g,'Ω')
-    // Operators
     .replace(/\\cdot/g,'·').replace(/\\times/g,'×').replace(/\\pm/g,'±')
     .replace(/\\leq/g,'≤').replace(/\\geq/g,'≥').replace(/\\neq/g,'≠')
     .replace(/\\approx/g,'≈').replace(/\\infty/g,'∞')
-    .replace(/\\rightarrow/g,'→').replace(/\\leftarrow/g,'←')
-    // Functions/text
+    .replace(/\\rightarrow/g,'→').replace(/\\leftarrow/g,'←').replace(/\\to\b/g,'→')
     .replace(/\\sqrt\{([^{}]+)\}/g,'√($1)')
     .replace(/\\text\{([^{}]+)\}/g,'$1').replace(/\\mathrm\{([^{}]+)\}/g,'$1')
     .replace(/\\ln\b/g,'ln').replace(/\\log\b/g,'log').replace(/\\exp\b/g,'exp')
     .replace(/\\sin\b/g,'sin').replace(/\\cos\b/g,'cos').replace(/\\tan\b/g,'tan')
-    // Brackets
     .replace(/\\left\s*\(/g,'(').replace(/\\right\s*\)/g,')')
     .replace(/\\left\s*\[/g,'[').replace(/\\right\s*\]/g,']')
-    // Super/subscripts with braces
     .replace(/\^{([^{}]*)}/g,'^($1)').replace(/_{([^{}]*)}/g,'_($1)')
     .replace(/\^(-?[a-zA-Z0-9])/g,'^$1').replace(/_(-?[a-zA-Z0-9])/g,'_$1')
-    // Spacing and cleanup
     .replace(/\\,/g,' ').replace(/\\!/g,'').replace(/\\:/g,' ').replace(/\\;/g,' ')
     .replace(/\\\\/g,' ').replace(/\\[a-zA-Z]+/g,'')
     .replace(/[{}]/g,'').replace(/\$+/g,'').replace(/\s{2,}/g,' ').trim();
   return s;
 }
 
-// Strip inline markdown so raw **bold** / *italic* / `code` don't appear as literal chars in PDF
-// Also converts LaTeX math (with or without $$ delimiters) to readable Unicode
+// Chemistry formatting — ARROWS first, subscripts second
+function fixChemistry(text) {
+  let s = text
+    .replace(/!'/g, '→')
+    .replace(/->(?!>)/g, '→')
+    .replace(/=>/g, '⇒')
+    .replace(/"H_f\b/g, 'ΔHf')
+    .replace(/"H\b/g, 'ΔH')
+    .replace(/\bDelta\s*H\b/g, 'ΔH')
+    .replace(/\\Delta\s*H/g, 'ΔH');
+  // Named chemical subscripts
+  s = s
+    .replace(/\bC_6H_\{12\}O_6\b/g,'C₆H₁₂O₆').replace(/\bC_6H_{12}O_6\b/g,'C₆H₁₂O₆')
+    .replace(/\bH_2SO_4\b/g,'H₂SO₄').replace(/\bH_2CO_3\b/g,'H₂CO₃')
+    .replace(/\bCH_4\b/g,'CH₄').replace(/\bCO_2\b/g,'CO₂').replace(/\bH_2O\b/g,'H₂O')
+    .replace(/\bH_2\b/g,'H₂').replace(/\bO_2\b/g,'O₂').replace(/\bN_2\b/g,'N₂')
+    .replace(/\bNH_3\b/g,'NH₃').replace(/\bC_2H_5OH\b/g,'C₂H₅OH')
+    .replace(/\bH_3O\b/g,'H₃O').replace(/\bSO_4\b/g,'SO₄').replace(/\bNO_3\b/g,'NO₃')
+    .replace(/\bPO_4\b/g,'PO₄').replace(/\bCO_3\b/g,'CO₃').replace(/\bO_3\b/g,'O₃');
+  return s;
+}
+
 function cleanText(t) {
   if (!t) return '';
   let s = String(t)
+    .replace(/---TOPIC_END---/g, '')
+    .replace(/^:::[a-z]*\s*$/gm, '')
+    .replace(/^::\s*$/gm, '')
     .replace(/\*\*(.*?)\*\*/gs, '$1')
     .replace(/\*(.*?)\*/gs, '$1')
     .replace(/__(.*?)__/gs, '$1')
@@ -118,12 +126,27 @@ function cleanText(t) {
     .replace(/~~(.*?)~~/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#+\s+/gm, '')
-    // Convert $$ block math and $ inline math
     .replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => latexToReadable(m))
     .replace(/\$(.*?)\$/g, (_, m) => latexToReadable(m));
-  // Convert any remaining bare LaTeX (lines containing \command)
   if (/\\\w/.test(s)) s = latexToReadable(s);
-  return s;
+  s = fixChemistry(s);
+  return s.trim();
+}
+
+// Remove duplicate paragraphs across results
+function removeDuplicateParagraphs(results) {
+  const seen = new Set();
+  return results.map(r => {
+    const lines = r.content.split('\n');
+    const filtered = lines.filter(line => {
+      const t = line.trim();
+      if (t.length < 55) return true; // keep short lines (headings, list items, etc.)
+      if (seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    });
+    return { ...r, content: filtered.join('\n') };
+  });
 }
 
 export async function fetchUnsplashCover(query) {
@@ -136,32 +159,82 @@ export async function fetchUnsplashCover(query) {
     const data = await resp.json();
     const imgUrl = data?.results?.[0]?.urls?.regular;
     return imgUrl ? await imgUrlToBase64(imgUrl) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
+}
+
+// PubChem — free, no key, CORS-safe from browser; check Content-Type before base64 to avoid 404 JSON
+async function fetchPubChemImage(compoundName) {
+  try {
+    const url = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(compoundName)}/PNG`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return null;
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.includes('image')) return null;
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((res, rej) => {
+      const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob);
+    });
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || 200; c.height = img.naturalHeight || 200;
+        c.getContext('2d').drawImage(img, 0, 0);
+        resolve({ base64: c.toDataURL('image/png'), w: c.width, h: c.height, compound: compoundName });
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  } catch { return null; }
+}
+
+// Wikipedia thumbnail — free, CORS-safe, one image per topic
+async function fetchWikipediaImage(query) {
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(query)}&prop=pageimages&pithumbsize=700&format=json&origin=*`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const pages = data?.query?.pages;
+    if (!pages) return null;
+    const page = Object.values(pages)[0];
+    const thumbUrl = page?.thumbnail?.source;
+    if (!thumbUrl) return null;
+    const resp2 = await fetch(thumbUrl, { signal: AbortSignal.timeout(4000) });
+    if (!resp2.ok) return null;
+    const blob = await resp2.blob();
+    const dataUrl = await new Promise((res, rej) => {
+      const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob);
+    });
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        resolve({ base64: canvas.toDataURL('image/jpeg', 0.85), w: img.naturalWidth, h: img.naturalHeight, caption: page.title || query });
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  } catch { return null; }
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Mermaid → base64 PNG
+// Mermaid → base64 PNG (must await all renders before PDF step)
 // ─────────────────────────────────────────────────────────────────
 async function renderMermaidToBase64(code) {
   try {
     const mermaid = (await import('mermaid')).default;
-    // 'base' theme has no external font imports — avoids canvas taint entirely
     mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose',
       themeVariables: { primaryColor: '#EDE9FE', primaryBorderColor: '#6C3EE8',
         primaryTextColor: '#1A1A2E', lineColor: '#6C3EE8', fontFamily: 'helvetica,arial,sans-serif' } });
     const id = 'mmd' + Date.now() + Math.random().toString(36).slice(2, 7);
     const { svg } = await mermaid.render(id, code.trim());
-
-    // Strip any remaining external references
     const cleanSvg = svg
       .replace(/@import\s+url\([^)]*\)[^;]*;/g, '')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (m) =>
         m.replace(/@import\s+url\([^)]*\)[^;]*;/g, '').replace(/url\(['"]?https?:[^)'"]+['"]?\)/g, ''));
-
-    // Extract SVG pixel dimensions from attributes or viewBox
-    // (some browsers return naturalWidth=0 for SVGs without explicit px dimensions)
     const wAttr = cleanSvg.match(/\bwidth="([\d.]+)"/);
     const hAttr = cleanSvg.match(/\bheight="([\d.]+)"/);
     const vb    = cleanSvg.match(/\bviewBox="([\d.\s,-]+)"/);
@@ -173,16 +246,12 @@ async function renderMermaidToBase64(code) {
     }
     const iw = Math.max(svgW || 700, 300);
     const ih = Math.max(svgH || 350, 100);
-
-    // Force explicit px dimensions on SVG so Image.naturalWidth is reliable
     const sizedSvg = cleanSvg
       .replace(/(<svg\b[^>]*)\bwidth="[^"]*"/, `$1width="${iw}"`)
       .replace(/(<svg\b[^>]*)\bheight="[^"]*"/, `$1height="${ih}"`);
     const finalSvg = sizedSvg.includes('width=') ? sizedSvg
       : sizedSvg.replace('<svg', `<svg width="${iw}" height="${ih}"`);
-
     const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(finalSvg)}`;
-
     return await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -206,44 +275,8 @@ async function renderMermaidToBase64(code) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Wikipedia image fetch — free, CORS-friendly, one image per topic
-// ─────────────────────────────────────────────────────────────────
-async function fetchWikipediaImage(query) {
-  try {
-    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(query)}&prop=pageimages&pithumbsize=700&format=json&origin=*`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const pages = data?.query?.pages;
-    if (!pages) return null;
-    const page = Object.values(pages)[0];
-    const thumbUrl = page?.thumbnail?.source;
-    if (!thumbUrl) return null;
-    // fetch → data: URL to avoid canvas taint / img-src CSP block
-    const resp2 = await fetch(thumbUrl, { signal: AbortSignal.timeout(4000) });
-    if (!resp2.ok) return null;
-    const blob = await resp2.blob();
-    const dataUrl = await new Promise((res, rej) => {
-      const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob);
-    });
-    return await new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        resolve({ base64: canvas.toDataURL('image/jpeg', 0.85), w: img.naturalWidth, h: img.naturalHeight, caption: page.title || query });
-      };
-      img.onerror = () => resolve(null);
-      img.src = dataUrl;
-    });
-  } catch {
-    return null;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Markdown parser — headings, lists, code, :::blocks, $$equations, tables
+// Markdown parser — pipeline order: headings → lists → code →
+// tables → equations → ::: blocks (sub-parsed) → paragraphs
 // ─────────────────────────────────────────────────────────────────
 export function parseMarkdownToSegments(markdown) {
   const lines = markdown.split('\n');
@@ -254,9 +287,13 @@ export function parseMarkdownToSegments(markdown) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    if (!trimmed) { segments.push({ type: 'spacer' }); i++; continue; }
+    // Strip system tokens
+    if (!trimmed || trimmed === '---TOPIC_END---' || trimmed === '---' && i === 0) {
+      if (!trimmed) segments.push({ type: 'spacer' });
+      i++; continue;
+    }
 
-    // ::: fenced blocks (definition, example, keypoint, warning, theorem, mermaid, note)
+    // ::: fenced blocks — sub-parse content so tables/equations inside blocks work
     if (trimmed.startsWith(':::') && !trimmed.startsWith('::::')) {
       const blockType = trimmed.slice(3).trim().toLowerCase() || 'note';
       const contentLines = [];
@@ -267,15 +304,17 @@ export function parseMarkdownToSegments(markdown) {
       }
       i++; // skip closing :::
       const rawText = contentLines.join('\n').trim();
-      const cleanText = rawText
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/`(.*?)`/g, '$1');
-      segments.push({ type: 'block', blockType, text: cleanText, rawText });
+      // Sub-parse the block content so tables/mermaid/equations inside blocks render correctly
+      const subSegments = parseMarkdownToSegments(rawText);
+      // Plain text fallback (strip markdown)
+      const plainText = rawText
+        .replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1')
+        .replace(/---TOPIC_END---/g, '').replace(/^#+\s*/gm, '').trim();
+      segments.push({ type: 'block', blockType, text: plainText, rawText, subSegments });
       continue;
     }
 
-    // $$ block equations (on its own line)
+    // $$ block equations
     if (trimmed === '$$') {
       const eqLines = [];
       i++;
@@ -284,8 +323,6 @@ export function parseMarkdownToSegments(markdown) {
       segments.push({ type: 'equation', text: eqLines.join('\n').trim() });
       continue;
     }
-
-    // $$ inline (whole line: $$expr$$)
     if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
       segments.push({ type: 'equation', text: trimmed.slice(2, -2).trim() });
       i++; continue;
@@ -299,12 +336,12 @@ export function parseMarkdownToSegments(markdown) {
 
     // Bullet list
     else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-      segments.push({ type: 'li', text: trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1') });
+      segments.push({ type: 'li', text: trimmed.slice(2).replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1') });
     }
 
     // Numbered list
     else if (/^\d+\.\s/.test(trimmed)) {
-      segments.push({ type: 'oli', text: trimmed.replace(/^\d+\.\s/, '').replace(/\*\*(.*?)\*\*/g, '$1') });
+      segments.push({ type: 'oli', text: trimmed.replace(/^\d+\.\s/, '').replace(/\*\*(.*?)\*\*/g,'$1') });
     }
 
     // Fenced code
@@ -321,8 +358,8 @@ export function parseMarkdownToSegments(markdown) {
       while (i < lines.length && lines[i].trim().startsWith('|')) {
         const row = lines[i].trim();
         if (!row.match(/^\|[-: |]+\|$/)) {
-          const cells = row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1).map(c => c.trim()
-            .replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1'));
+          const cells = row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+            .map(c => c.trim().replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1'));
           if (cells.length > 0) tableRows.push(cells);
         }
         i++;
@@ -336,41 +373,249 @@ export function parseMarkdownToSegments(markdown) {
       segments.push({ type: 'bold', text: trimmed.slice(2, -2) });
     }
 
-    // HR
-    else if (trimmed.startsWith('---') || trimmed.startsWith('===')) {
+    // HR — skip ---TOPIC_END--- already handled above; only real HRs
+    else if ((trimmed === '---' || trimmed === '===') && i > 0) {
       segments.push({ type: 'hr' });
+    }
+
+    // Skip lone ::: tokens that slipped through
+    else if (trimmed === ':::' || trimmed === '::') {
+      // skip
     }
 
     // Paragraph
     else {
       const clean = trimmed
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/`(.*?)`/g, '$1')
-        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-        .replace(/\$\$(.*?)\$\$/g, '$1')
-        .replace(/\$(.*?)\$/g, '$1');
-      segments.push({ type: 'p', text: clean });
+        .replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/`(.*?)`/g,'$1')
+        .replace(/\[(.*?)\]\(.*?\)/g,'$1').replace(/\$\$(.*?)\$\$/g,'$1').replace(/\$(.*?)\$/g,'$1')
+        .replace(/---TOPIC_END---/g,'');
+      if (clean) segments.push({ type: 'p', text: clean });
     }
 
     i++;
   }
-
   return segments;
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Block style definitions
+// Block style definitions — redesigned with colored header (item 12)
+// warning blocks are skipped entirely (item 16: remove Common Mistakes)
 // ─────────────────────────────────────────────────────────────────
 const BLOCK_STYLES = {
-  definition: { bg: [239, 246, 255], border: [59, 130, 246],  label: 'Definition' },
-  example:    { bg: [240, 253, 244], border: [16, 185, 129],  label: 'Example' },
-  keypoint:   { bg: [255, 251, 235], border: [245, 158, 11],  label: 'Key Point' },
-  warning:    { bg: [254, 242, 242], border: [239, 68, 68],   label: 'Common Mistake' },
-  theorem:    { bg: [245, 243, 255], border: [109, 40, 217],  label: 'Theorem' },
-  note:       { bg: [240, 249, 255], border: [14, 165, 233],  label: 'Note' },
-  mermaid:    { bg: [248, 250, 252], border: [100, 116, 139], label: 'Diagram' },
+  definition: { bg: [239, 246, 255], border: [37, 99, 235],   label: 'Definition',   icon: '▶' },
+  example:    { bg: [240, 253, 244], border: [5,  150, 105],   label: 'Example',      icon: '✦' },
+  keypoint:   { bg: [255, 251, 235], border: [180, 83,  9],    label: 'Key Point',    icon: '★' },
+  theorem:    { bg: [245, 243, 255], border: [109, 40, 217],   label: 'Theorem',      icon: '■' },
+  note:       { bg: [240, 253, 244], border: [22, 163,  74],   label: 'Note',         icon: 'ℹ' },
+  mermaid:    { bg: [248, 250, 252], border: [100, 116, 139],  label: 'Diagram',      icon: '◈' },
 };
+
+// Collect all mermaid keys from segments tree (including sub-segments)
+function* iterateMermaidKeys(segments) {
+  for (const seg of segments) {
+    if (seg.type === 'block' && seg.blockType === 'mermaid') yield seg.rawText || seg.text;
+    if (seg.subSegments) yield* iterateMermaidKeys(seg.subSegments);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Block content height estimator (for ensureSpace)
+// ─────────────────────────────────────────────────────────────────
+function estimateBlockContentHeight(doc, subSegs, innerW) {
+  let h = 0;
+  for (const ss of subSegs) {
+    if (ss.type === 'p')      h += Math.max(1, doc.splitTextToSize(cleanText(ss.text), innerW).length) * 5.5 + 1;
+    else if (ss.type === 'li' || ss.type === 'oli') h += Math.max(1, doc.splitTextToSize(cleanText(ss.text), innerW - 5).length) * 5 + 1;
+    else if (ss.type === 'h2') h += 9;
+    else if (ss.type === 'h3') h += 8;
+    else if (ss.type === 'h4' || ss.type === 'bold') h += 7;
+    else if (ss.type === 'equation') h += Math.max(1, doc.splitTextToSize(latexToReadable(ss.text), innerW - 10).length) * 6 + 10;
+    else if (ss.type === 'table') h += (ss.rows?.length || 0) * 6.5 + 6;
+    else if (ss.type === 'spacer') h += 2;
+  }
+  return Math.max(h, 6);
+}
+
+// Render sub-segments inside a block box (no page breaks — block renders as unit)
+function renderBlockSubSegs(doc, subSegs, x, startY, innerW) {
+  let cy = startY;
+  for (const ss of subSegs) {
+    switch (ss.type) {
+      case 'p': {
+        const lines = doc.splitTextToSize(cleanText(ss.text), innerW);
+        if (!lines[0]?.trim()) break;
+        doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
+        doc.text(lines, x, cy); cy += lines.length * 5.5 + 1; break;
+      }
+      case 'li': case 'oli': {
+        const lines = doc.splitTextToSize(`•  ${cleanText(ss.text)}`, innerW - 5);
+        doc.setFontSize(9.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
+        doc.text(lines, x + 2, cy); cy += lines.length * 5 + 1; break;
+      }
+      case 'h2': {
+        const lines = doc.splitTextToSize(cleanText(ss.text), innerW);
+        doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 40, 80);
+        doc.text(lines, x, cy); cy += lines.length * 6 + 3; break;
+      }
+      case 'h3': case 'h4': case 'bold': {
+        const lines = doc.splitTextToSize(cleanText(ss.text), innerW);
+        doc.setFontSize(10.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(55, 65, 81);
+        doc.text(lines, x, cy); cy += lines.length * 5.5 + 2; break;
+      }
+      case 'equation': {
+        const eqText = latexToReadable(ss.text);
+        const eqLines = doc.splitTextToSize(eqText, innerW - 10);
+        const eqH = eqLines.length * 6 + 6;
+        doc.setFillColor(245, 243, 255); doc.roundedRect(x, cy - 1, innerW, eqH, 1, 1, 'F');
+        doc.setFontSize(9.5); doc.setFont('courier', 'normal'); doc.setTextColor(108, 62, 232);
+        doc.text(eqLines, x + 5, cy + 4); cy += eqH + 3; break;
+      }
+      case 'table': {
+        if (!ss.rows?.length) break;
+        const colN = ss.rows[0].length;
+        const cw = innerW / colN;
+        ss.rows.forEach((row, ri) => {
+          const rY = cy + ri * 6.5;
+          doc.setFillColor(ri === 0 ? 190 : ri % 2 === 0 ? 240 : 232,
+                           ri === 0 ? 195 : ri % 2 === 0 ? 242 : 235,
+                           ri === 0 ? 230 : ri % 2 === 0 ? 255 : 252);
+          doc.rect(x, rY, innerW, 6.5, 'F');
+          row.forEach((cell, ci) => {
+            doc.setFontSize(8); doc.setFont('helvetica', ri === 0 ? 'bold' : 'normal');
+            doc.setTextColor(40, 40, 60);
+            const ct = doc.splitTextToSize(cleanText(String(cell || '')), cw - 3);
+            doc.text(ct[0] || '', x + ci * cw + 2, rY + 4.5);
+          });
+        });
+        cy += ss.rows.length * 6.5 + 4; break;
+      }
+      case 'code': {
+        const cls = ss.text.split('\n');
+        doc.setFillColor(240, 240, 248); doc.roundedRect(x, cy - 1, innerW, cls.length * 4 + 5, 1, 1, 'F');
+        doc.setFontSize(8); doc.setFont('courier', 'normal'); doc.setTextColor(55, 65, 81);
+        cls.forEach((cl, li) => doc.text(doc.splitTextToSize(cl, innerW - 4), x + 2, cy + 3 + li * 4));
+        cy += cls.length * 4 + 7; break;
+      }
+      case 'spacer': cy += 2; break;
+      default: break;
+    }
+  }
+  return cy;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Formula Reference Sheet — 2-column grid of all equations (item 13)
+// ─────────────────────────────────────────────────────────────────
+function addFormulaSheet(doc, sortedResults, W, H, ML, MR, TW, drawPageHeader) {
+  const allEqs = [];
+  const seenEq = new Set();
+  for (const result of sortedResults) {
+    const segs = parseMarkdownToSegments(result.content || '');
+    for (const seg of segs) {
+      if (seg.type === 'equation' && seg.text && !seenEq.has(seg.text)) {
+        seenEq.add(seg.text);
+        allEqs.push({ text: latexToReadable(seg.text), chapter: result.chapterName || '' });
+      }
+    }
+  }
+  if (allEqs.length === 0) return;
+
+  doc.addPage();
+  drawPageHeader('Formula Reference Sheet');
+  let y = 22;
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 46);
+  doc.text('Formula Reference Sheet', ML, y); y += 7;
+  doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.3); doc.line(ML, y, W - MR, y); y += 6;
+
+  const colW = (TW - 5) / 2;
+  let col = 0;
+  let rowY = y;
+
+  allEqs.forEach((eq) => {
+    const x = col === 0 ? ML : ML + colW + 5;
+    const eqLines = doc.splitTextToSize(eq.text, colW - 10);
+    const boxH = eqLines.length * 5.5 + 13;
+    if (rowY + boxH > H - 16) {
+      if (col === 1) { col = 0; rowY += boxH + 4; }
+      doc.addPage(); drawPageHeader('Formula Reference Sheet');
+      rowY = 22; col = 0;
+    }
+    doc.setFillColor(245, 243, 255); doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.25);
+    doc.roundedRect(x, rowY, colW, boxH, 2, 2, 'FD');
+    doc.setFontSize(8.5); doc.setFont('courier', 'bold'); doc.setTextColor(108, 62, 232);
+    doc.text(eqLines, x + 5, rowY + 7);
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(150, 150, 180);
+    doc.text(eq.chapter.slice(0, 28), x + 5, rowY + boxH - 3);
+    if (col === 0) { col = 1; }
+    else { col = 0; rowY += boxH + 4; }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Concept Mind Map — radial diagram (item 14)
+// ─────────────────────────────────────────────────────────────────
+function addMindMap(doc, title, chapters, W, H, ML, drawPageHeader) {
+  doc.addPage();
+  drawPageHeader('Concept Mind Map');
+  doc.setFillColor(248, 249, 255); doc.rect(0, 14, W, H - 14, 'F');
+  doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 46);
+  doc.text('Concept Mind Map', W / 2, 22, { align: 'center' });
+
+  const cx = W / 2, cy = H / 2 + 5;
+  const n = Math.max(chapters.length, 1);
+  const R = Math.min(70, 85 - n * 1.5); // radius for chapter nodes
+
+  // Center node
+  doc.setFillColor(108, 62, 232); doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.5);
+  doc.ellipse(cx, cy, 22, 10, 'FD');
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+  const centerLabel = title.slice(0, 22);
+  doc.text(centerLabel, cx, cy + 2.5, { align: 'center' });
+
+  const palette = [
+    [37,99,235],[5,150,105],[180,83,9],[109,40,217],
+    [220,38,38],[14,165,233],[22,163,74],[217,70,239],
+  ];
+
+  chapters.forEach((ch, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    const nx = cx + R * Math.cos(angle);
+    const ny = cy + R * Math.sin(angle);
+    const color = palette[i % palette.length];
+
+    // Connector
+    doc.setDrawColor(...color); doc.setLineWidth(0.6);
+    doc.line(cx + 22 * Math.cos(angle), cy + 10 * Math.sin(angle), nx, ny);
+
+    // Chapter node
+    const label = ch.name.slice(0, 20);
+    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+    const bw = Math.min(38, doc.getTextWidth(label) + 8);
+    doc.setFillColor(...color); doc.setDrawColor(...color);
+    doc.roundedRect(nx - bw / 2, ny - 6.5, bw, 11, 2, 2, 'FD');
+    doc.setTextColor(255, 255, 255);
+    doc.text(label, nx, ny + 1.5, { align: 'center' });
+
+    // Topic dots around each chapter
+    const topics = ch.topics || [];
+    const maxDots = Math.min(topics.length, 5);
+    for (let ti = 0; ti < maxDots; ti++) {
+      const spread = maxDots > 1 ? (ti / (maxDots - 1) - 0.5) * 0.8 : 0;
+      const ta = angle + spread;
+      const tr = 24;
+      const tx = nx + tr * Math.cos(ta);
+      const ty = ny + tr * Math.sin(ta);
+      if (tx > 10 && tx < W - 10 && ty > 26 && ty < H - 10) {
+        doc.setFillColor(...color.map(c => Math.min(255, c + 70)));
+        doc.setDrawColor(...color); doc.setLineWidth(0.3);
+        doc.circle(tx, ty, 3.5, 'FD');
+        doc.setFontSize(5.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
+        const tl = topics[ti].name.slice(0, 16);
+        doc.text(tl, tx, ty + 8, { align: 'center' });
+      }
+    }
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Export to PDF using jsPDF
@@ -382,35 +627,50 @@ export async function exportToPDF(title, outputType, chapters, results, options 
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const W = 210, H = 297, ML = 20, MR = 20, TW = W - ML - MR;
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const YEAR = new Date().getFullYear(); // will be 2026
 
-  // ── Pre-load cover template, end page (JPEG to compress 1MB+ file), logo ──
+  // ── Pre-load assets ──────────────────────────────────────────────
   const [coverTemplate, endPageB64, logoObj] = await Promise.all([
     imgUrlToPng(coverTemplateUrl).catch(() => null),
-    imgUrlToBase64(endPageUrl).catch(() => null),   // JPEG compression keeps PDF size small
+    imgUrlToBase64(endPageUrl).catch(() => null),
     imgUrlToPng(logoUrl).catch(() => null),
   ]);
   const logoB64 = logoObj?.base64 || null;
   const logoAspect = logoObj ? (logoObj.w / Math.max(logoObj.h, 1)) : 1;
   onImageLog?.({ cover: !!coverTemplate?.base64, wikiLoaded: 0, wikiTotal: 0, mermaid: 0, done: false });
 
-  // ── Pre-render all Mermaid blocks ───────────────────────────
+  // ── Remove duplicate paragraphs ──────────────────────────────────
+  const dedupedResults = removeDuplicateParagraphs(results);
+
+  // ── Sort results by chapter order ────────────────────────────────
+  const sortedResults = [...dedupedResults].sort((a, b) => {
+    const ai = chapters.findIndex((c) => c.id === a.chapterId);
+    const bi = chapters.findIndex((c) => c.id === b.chapterId);
+    return ai - bi;
+  });
+
+  // ── Pre-render ALL mermaid blocks (must await all before PDF) ────
   const mermaidCache = new Map();
   let mermaidCount = 0;
-  for (const result of results) {
-    for (const seg of parseMarkdownToSegments(result.content || '')) {
-      if (seg.type === 'block' && seg.blockType === 'mermaid') {
-        const key = seg.rawText || seg.text;
-        if (!mermaidCache.has(key)) {
-          const r = await renderMermaidToBase64(key).catch(() => null);
-          mermaidCache.set(key, r);
-          if (r) mermaidCount++;
-        }
+  const mermaidRenders = [];
+  for (const result of sortedResults) {
+    const segs = parseMarkdownToSegments(result.content || '');
+    for (const key of iterateMermaidKeys(segs)) {
+      if (!mermaidCache.has(key)) {
+        mermaidCache.set(key, null); // reserve slot
+        mermaidRenders.push(
+          renderMermaidToBase64(key).then(r => {
+            mermaidCache.set(key, r);
+            if (r) mermaidCount++;
+          }).catch(() => {})
+        );
       }
     }
   }
+  await Promise.all(mermaidRenders);
 
-  // ── Pre-fetch Wikipedia images for all topics (parallel, 5s max total) ────
-  const uniqueTopicNames = [...new Set(results.map((r) => r.topicName).filter(Boolean))];
+  // ── Pre-fetch Wikipedia images ───────────────────────────────────
+  const uniqueTopicNames = [...new Set(sortedResults.map((r) => r.topicName).filter(Boolean))];
   const wikiImgList = await Promise.race([
     Promise.all(uniqueTopicNames.map((name) => fetchWikipediaImage(name).catch(() => null))),
     new Promise((r) => setTimeout(() => r(uniqueTopicNames.map(() => null)), 5000)),
@@ -419,7 +679,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
   onImageLog?.({ cover: !!coverTemplate?.base64, wikiLoaded, wikiTotal: uniqueTopicNames.length, mermaid: mermaidCount, done: false });
   const topicImageCache = new Map(uniqueTopicNames.map((name, i) => [name, wikiImgList[i]]));
 
-  // ── Page header helper ───────────────────────────────────────
+  // ── Page header helper ───────────────────────────────────────────
   const drawPageHeader = (chName) => {
     doc.setFillColor(248, 249, 255); doc.rect(0, 0, W, H, 'F');
     doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3); doc.line(ML, 13, W - MR, 13);
@@ -428,9 +688,9 @@ export async function exportToPDF(title, outputType, chapters, results, options 
     const brandText = 'PlanForge AI';
     if (logoB64) {
       const LOGO_H = 6;
-      const logoW = LOGO_H * logoAspect;          // width locked to natural aspect ratio
+      const logoW = LOGO_H * logoAspect;
       const brandW = doc.getTextWidth(brandText);
-      const blockW = logoW + 2.5 + brandW;        // logo + 2.5mm gap + text
+      const blockW = logoW + 2.5 + brandW;
       const blockX = W - MR - blockW;
       doc.addImage(logoB64, 'PNG', blockX, 6, logoW, LOGO_H);
       doc.text(brandText, blockX + logoW + 1, 10);
@@ -439,7 +699,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
     }
   };
 
-  // ── Page-break helper ────────────────────────────────────────
+  // ── Page-break helper ────────────────────────────────────────────
   const ensureSpace = (curY, needed, chName) => {
     if (curY + needed > H - 18) {
       doc.addPage();
@@ -449,11 +709,10 @@ export async function exportToPDF(title, outputType, chapters, results, options 
     return curY;
   };
 
-  // ── COVER PAGE ───────────────────────────────────────────────
+  // ── COVER PAGE ───────────────────────────────────────────────────
   if (coverTemplate) {
     doc.addImage(coverTemplate.base64, 'PNG', 0, 0, W, H);
   } else {
-    // Fallback dark cover
     doc.setFillColor(14, 17, 40); doc.rect(0, 0, W, H, 'F');
     doc.setFillColor(28, 10, 80); doc.rect(0, 0, W, 50, 'F');
     doc.setFillColor(108, 62, 232); doc.circle(W / 2, 24, 11, 'F');
@@ -461,49 +720,47 @@ export async function exportToPDF(title, outputType, chapters, results, options 
     doc.text('PF', W / 2, 28, { align: 'center' });
   }
 
-  // Overlay: Title — white area in template runs ~y=80mm to y=155mm, usable width ~140mm
-  const TITLE_MAX_W = 140;
-  const TITLE_AREA_TOP = 85;
-  const TITLE_AREA_BOT = 152;
-  const TITLE_AREA_CY = (TITLE_AREA_TOP + TITLE_AREA_BOT) / 2; // ~118mm
+  // Title overlay
+  const TITLE_MAX_W = 140, TITLE_AREA_TOP = 85, TITLE_AREA_BOT = 152;
+  const TITLE_AREA_CY = (TITLE_AREA_TOP + TITLE_AREA_BOT) / 2;
   const titleLines = doc.splitTextToSize(cleanText(title).toUpperCase(), TITLE_MAX_W);
   const titleFontSize = titleLines.length > 4 ? 18 : titleLines.length > 3 ? 20 : titleLines.length > 2 ? 22 : 26;
   const titleLineH = titleFontSize * 0.42;
   const titleBlockH = titleLines.length * titleLineH;
   const titleStartY = Math.min(Math.max(TITLE_AREA_CY - titleBlockH / 2, TITLE_AREA_TOP), TITLE_AREA_BOT - titleBlockH);
-  doc.setFontSize(titleFontSize); doc.setFont('helvetica', 'bold');
-  doc.setTextColor(26, 26, 46);
+  doc.setFontSize(titleFontSize); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 46);
   doc.text(titleLines, W / 2, titleStartY, { align: 'center', lineHeightFactor: 1.35 });
 
-  // Overlay: Date  (inside the date badge on the template, ~y=232mm)
+  // Date overlay
   doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
   doc.text(today, W / 2 + 8, 232, { align: 'center' });
 
-  // Overlay: Chapters · Topics (inside the pill badge on the template, ~y=250mm)
+  // Stats overlay
   doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(55, 65, 81);
-  const statsText = `${chapters.length} Chapters  ·  ${results.length} Topics`;
+  const statsText = `${chapters.length} Chapters  ·  ${sortedResults.length} Topics`;
   const statsLines = doc.splitTextToSize(statsText, TW - 20);
   const statsLineH = 7;
   const statsStartY = 251 - ((statsLines.length - 1) * statsLineH) / 2;
   doc.text(statsLines, W / 2, statsStartY, { align: 'center', lineHeightFactor: statsLineH / 16 * 2.83 });
 
-  // ── TABLE OF CONTENTS ────────────────────────────────────────
+  // ── TABLE OF CONTENTS ────────────────────────────────────────────
   doc.addPage();
   let y = 20;
   drawPageHeader('Table of Contents');
   doc.setFontSize(20); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 46);
-  doc.text('Table of Contents', ML, y);
-  y += 8;
-  doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.3); doc.line(ML, y, W - MR, y);
-  y += 10;
+  doc.text('Table of Contents', ML, y); y += 8;
+  doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.3); doc.line(ML, y, W - MR, y); y += 10;
 
+  // Real topic + chapter counts; page estimates based on actual segment counts
   const tocEntries = [];
   let pgCounter = 3;
   chapters.forEach((ch) => {
     tocEntries.push({ name: ch.name, level: 0, page: pgCounter });
-    const chRes = results.filter((r) => r.chapterId === ch.id);
+    const chRes = sortedResults.filter((r) => r.chapterId === ch.id);
     chRes.forEach((r) => tocEntries.push({ name: r.topicName || '', level: 1, page: pgCounter }));
-    pgCounter += Math.max(1, Math.ceil(chRes.reduce((a, r) => a + (r.content?.length || 0) / 3000, 0)));
+    // Estimate pages from segment count (more accurate than char-count)
+    const segCount = chRes.reduce((a, r) => a + parseMarkdownToSegments(r.content || '').length, 0);
+    pgCounter += Math.max(1, Math.ceil(segCount / 20));
   });
 
   tocEntries.forEach((entry) => {
@@ -513,8 +770,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
       const n = entry.name.length > 55 ? entry.name.slice(0, 52) + '...' : entry.name;
       doc.text(n, ML, y);
       doc.text(`${entry.page}`, W - MR, y, { align: 'right' });
-      const nW = doc.getTextWidth(n);
-      const pW = doc.getTextWidth(`${entry.page}`);
+      const nW = doc.getTextWidth(n), pW = doc.getTextWidth(`${entry.page}`);
       const ds = ML + nW + 3, de = W - MR - pW - 3;
       if (de > ds + 5) {
         doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(200, 200, 210);
@@ -523,18 +779,12 @@ export async function exportToPDF(title, outputType, chapters, results, options 
       y += 8;
     } else {
       doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
-      doc.text(`  · ${entry.name.length > 65 ? entry.name.slice(0, 62) + '...' : entry.name}`, ML + 5, y);
-      y += 6;
+      const tname = entry.name.length > 65 ? entry.name.slice(0, 62) + '...' : entry.name;
+      doc.text(`  · ${tname}`, ML + 5, y); y += 6;
     }
   });
 
-  // ── CONTENT PAGES ────────────────────────────────────────────
-  const sortedResults = [...results].sort((a, b) => {
-    const ai = chapters.findIndex((c) => c.id === a.chapterId);
-    const bi = chapters.findIndex((c) => c.id === b.chapterId);
-    return ai - bi;
-  });
-
+  // ── CONTENT PAGES ────────────────────────────────────────────────
   let currentChapterId = null;
 
   for (const result of sortedResults) {
@@ -546,11 +796,9 @@ export async function exportToPDF(title, outputType, chapters, results, options 
       currentChapterId = result.chapterId;
       doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(108, 62, 232);
       const chl = doc.splitTextToSize(result.chapterName || '', TW);
-      doc.text(chl, ML, y);
-      y += chl.length * 8 + 4;
+      doc.text(chl, ML, y); y += chl.length * 8 + 4;
       doc.setDrawColor(108, 62, 232); doc.setLineWidth(0.5);
-      doc.line(ML, y, ML + 40, y);
-      y += 8;
+      doc.line(ML, y, ML + 40, y); y += 8;
     }
 
     const segments = parseMarkdownToSegments(result.content || '');
@@ -561,23 +809,22 @@ export async function exportToPDF(title, outputType, chapters, results, options 
       switch (seg.type) {
         case 'spacer': y += 2; break;
 
-        case 'hr':
+        case 'hr': {
           y = ensureSpace(y, 6, result.chapterName);
           doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2);
           doc.line(ML, y, W - MR, y); y += 4; break;
+        }
 
         case 'h1': {
           y = ensureSpace(y, 18, result.chapterName); y += 2;
           doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 46);
           const ls = doc.splitTextToSize(cleanText(seg.text), TW); doc.text(ls, ML, y);
           y += ls.length * 9 + 4;
-          // Wikipedia image immediately after first topic h1 — maintain aspect ratio
           if (!topicImgInserted && topicWikiImg) {
             topicImgInserted = true;
             const MAX_W = TW, MAX_H = 60;
             const ratio = Math.min(MAX_W / topicWikiImg.w, MAX_H / topicWikiImg.h);
-            const imgW = topicWikiImg.w * ratio;
-            const imgH = topicWikiImg.h * ratio;
+            const imgW = topicWikiImg.w * ratio, imgH = topicWikiImg.h * ratio;
             const imgX = ML + (TW - imgW) / 2;
             y = ensureSpace(y, imgH + 14, result.chapterName);
             doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2);
@@ -628,9 +875,9 @@ export async function exportToPDF(title, outputType, chapters, results, options 
           doc.setFillColor(245, 245, 250); doc.setDrawColor(200, 200, 220); doc.setLineWidth(0.2);
           doc.roundedRect(ML, y - 3, TW, cH, 2, 2, 'FD');
           doc.setFontSize(8.5); doc.setFont('courier', 'normal'); doc.setTextColor(55, 65, 81);
-          let cy = y + 1;
-          cls.forEach((cl) => { const cs = doc.splitTextToSize(cl, TW - 6); doc.text(cs, ML + 3, cy); cy += cs.length * 4.5; });
-          y = cy + 4; break;
+          let cy2 = y + 1;
+          cls.forEach((cl) => { const cs = doc.splitTextToSize(cl, TW - 6); doc.text(cs, ML + 3, cy2); cy2 += cs.length * 4.5; });
+          y = cy2 + 4; break;
         }
 
         case 'equation': {
@@ -670,60 +917,86 @@ export async function exportToPDF(title, outputType, chapters, results, options 
         }
 
         case 'block': {
+          // Item 16: skip Common Mistakes entirely
+          if (seg.blockType === 'warning') break;
+
           const style = BLOCK_STYLES[seg.blockType] || BLOCK_STYLES.note;
 
+          // Mermaid block
           if (seg.blockType === 'mermaid') {
             const key = seg.rawText || seg.text;
             const img = mermaidCache.get(key);
             if (img) {
-              // Lock aspect ratio — never stretch width and height independently
-              const MAX_DIAG_W = TW - 4;
-              const MAX_DIAG_H = 72;
+              const MAX_DIAG_W = TW - 4, MAX_DIAG_H = 72;
               const diagRatio = Math.min(MAX_DIAG_W / Math.max(img.w, 1), MAX_DIAG_H / Math.max(img.h, 1));
-              const diagW = img.w * diagRatio;
-              const diagH = img.h * diagRatio;
+              const diagW = img.w * diagRatio, diagH = img.h * diagRatio;
               const diagX = ML + (TW - diagW) / 2;
-              y = ensureSpace(y, diagH + 14, result.chapterName);
-              const boxH = diagH + 12;
-              doc.setFillColor(...style.bg); doc.setDrawColor(...style.border); doc.setLineWidth(0.3);
-              doc.roundedRect(ML, y - 2, TW, boxH, 2, 2, 'FD');
-              doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...style.border);
-              doc.text('Diagram', ML + 4, y + 4);
-              doc.addImage(img.base64, 'PNG', diagX, y + 7, diagW, diagH);
+              const boxH = diagH + 18;
+              y = ensureSpace(y, boxH, result.chapterName);
+              doc.setFillColor(...style.bg);
+              doc.roundedRect(ML, y - 2, TW, boxH, 2, 2, 'F');
+              // Colored header
+              doc.setFillColor(...style.border);
+              doc.roundedRect(ML, y - 2, TW, 11, 2, 2, 'F');
+              doc.rect(ML, y + 3, TW, 6, 'F');
+              doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+              doc.text(`${style.icon}  ${style.label}`, ML + 5, y + 5);
+              doc.addImage(img.base64, 'PNG', diagX, y + 10, diagW, diagH);
               y += boxH + 4;
             } else {
-              // Mermaid failed: show as code
+              // Mermaid failed — show as code fallback
               const fallbackLines = (seg.rawText || seg.text).split('\n');
               const fH = fallbackLines.length * 4.5 + 8;
               y = ensureSpace(y, fH, result.chapterName);
               doc.setFillColor(248, 250, 252); doc.roundedRect(ML, y - 2, TW, fH, 2, 2, 'F');
               doc.setFontSize(8); doc.setFont('courier', 'normal'); doc.setTextColor(100, 116, 139);
               let fy = y + 1;
-              fallbackLines.forEach((fl) => { doc.text(doc.splitTextToSize(fl, TW - 6), ML + 3, fy); fy += 4.5; });
+              fallbackLines.forEach((fl) => { const s = doc.splitTextToSize(fl, TW - 6); doc.text(s, ML + 3, fy); fy += 4.5; });
               y = fy + 4;
             }
-          } else {
-            const cleanedBlock = cleanText(seg.text);
-            if (!cleanedBlock.trim()) break;
-            const textLines = doc.splitTextToSize(cleanedBlock, TW - 12);
-            const blockH = textLines.length * 5.5 + 16;
-            y = ensureSpace(y, blockH, result.chapterName);
-            doc.setFillColor(...style.bg);
-            doc.roundedRect(ML, y - 2, TW, blockH, 2, 2, 'F');
-            doc.setFillColor(...style.border);
-            doc.roundedRect(ML, y - 2, 3.5, blockH, 1, 1, 'F');
-            doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(...style.border);
-            doc.text(style.label, ML + 7, y + 5);
-            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
-            doc.text(textLines, ML + 7, y + 12);
-            y += blockH + 4;
+            break;
           }
+
+          // Standard callout block — render sub-segments if available
+          const subSegs = seg.subSegments || [];
+          const innerW = TW - 14;
+          const contentH = subSegs.length > 0
+            ? estimateBlockContentHeight(doc, subSegs, innerW)
+            : doc.splitTextToSize(cleanText(seg.text || ''), innerW).length * 5.5;
+          if (contentH <= 0) break;
+          const blockH = contentH + 22;
+
+          y = ensureSpace(y, Math.min(blockH, H - 50), result.chapterName);
+
+          // Background
+          doc.setFillColor(...style.bg);
+          doc.roundedRect(ML, y - 2, TW, blockH, 2, 2, 'F');
+
+          // Colored header bar (item 12)
+          doc.setFillColor(...style.border);
+          doc.roundedRect(ML, y - 2, TW, 11, 2, 2, 'F');
+          doc.rect(ML, y + 3, TW, 6, 'F'); // square off bottom corners of header
+
+          doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+          doc.text(`${style.icon}  ${style.label}`, ML + 5, y + 5);
+
+          const contentStartY = y + 13;
+
+          if (subSegs.length > 0) {
+            renderBlockSubSegs(doc, subSegs, ML + 7, contentStartY, innerW);
+          } else {
+            const textLines = doc.splitTextToSize(cleanText(seg.text || ''), innerW);
+            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81);
+            doc.text(textLines, ML + 7, contentStartY);
+          }
+
+          y += blockH + 4;
           break;
         }
 
         case 'p':
         default: {
-          const cleanedP = cleanText(seg.text);
+          const cleanedP = cleanText(seg.text || '');
           if (!cleanedP.trim()) break;
           const pl = doc.splitTextToSize(cleanedP, TW);
           y = ensureSpace(y, pl.length * 5.5, result.chapterName);
@@ -734,30 +1007,35 @@ export async function exportToPDF(title, outputType, chapters, results, options 
     }
   }
 
-  // ── LAST PAGE — end.png full-bleed ──────────────────────────
+  // ── FORMULA SHEET (item 13) ──────────────────────────────────────
+  addFormulaSheet(doc, sortedResults, W, H, ML, MR, TW, drawPageHeader);
+
+  // ── MIND MAP (item 14) ───────────────────────────────────────────
+  addMindMap(doc, title, chapters, W, H, ML, drawPageHeader);
+
+  // ── LAST PAGE — end.png full-bleed ──────────────────────────────
   doc.addPage();
   if (endPageB64) {
     doc.addImage(endPageB64, 'JPEG', 0, 0, W, H);
   } else {
-    // Fallback if image failed to load
     drawPageHeader('');
     doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.setTextColor(108, 62, 232);
     doc.text('Thank You', W / 2, H / 2, { align: 'center' });
   }
 
-  // ── PAGE NUMBERS — single final pass, no duplicates ──────────
+  // ── PAGE NUMBERS — single final pass (item 10) ──────────────────
+  // Page 1 = cover (no number), last page = end (no number)
+  // All others: "N / Total" where N starts at 1 for TOC page
   const totalP = doc.internal.getNumberOfPages();
-  for (let pg = 2; pg <= totalP; pg++) {
+  const numberedCount = totalP - 2; // exclude cover + end page
+  for (let pg = 2; pg < totalP; pg++) {
     doc.setPage(pg);
     doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(155, 155, 175);
-    if (pg === 2) {
-      doc.text('Table of Contents', W / 2, H - 8, { align: 'center' });
-    } else if (pg === totalP) {
-      // disclaimer page — intentionally no page number
-    } else {
-      doc.text(`${pg - 2}  /  ${totalP - 3}`, W / 2, H - 8, { align: 'center' });
-    }
+    doc.text(`${pg - 1}  /  ${numberedCount}`, W / 2, H - 8, { align: 'center' });
   }
+
+  // ── Footer year (item 8) — update cover year line if needed ─────
+  // (cover overlay date already uses current year via `today`)
 
   const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
   doc.save(`${safeTitle}.pdf`);
@@ -777,10 +1055,7 @@ export async function exportToWord(title, outputType, chapters, results) {
   children.push(
     new Paragraph({ text: title, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }),
     new Paragraph({ text: outputType, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-    new Paragraph({
-      children: [new TextRun({ text: `AI Generated by PlanForge AI · ${today}`, color: '6B7280' })],
-      alignment: AlignmentType.CENTER,
-    }),
+    new Paragraph({ children: [new TextRun({ text: `AI Generated by PlanForge AI · ${today}`, color: '6B7280' })], alignment: AlignmentType.CENTER }),
     new Paragraph({ text: '' }),
     new Paragraph({ text: 'Table of Contents', heading: HeadingLevel.HEADING_1 })
   );
@@ -803,31 +1078,33 @@ export async function exportToWord(title, outputType, chapters, results) {
     }
     const segments = parseMarkdownToSegments(result.content || '');
     segments.forEach((seg) => {
+      if (seg.blockType === 'warning') return; // skip common mistakes
       switch (seg.type) {
-        case 'h2': children.push(new Paragraph({ text: seg.text, heading: HeadingLevel.HEADING_2 })); break;
-        case 'h3': children.push(new Paragraph({ text: seg.text, heading: HeadingLevel.HEADING_3 })); break;
+        case 'h2': children.push(new Paragraph({ text: cleanText(seg.text), heading: HeadingLevel.HEADING_2 })); break;
+        case 'h3': children.push(new Paragraph({ text: cleanText(seg.text), heading: HeadingLevel.HEADING_3 })); break;
         case 'h4':
-        case 'bold': children.push(new Paragraph({ children: [new TextRun({ text: seg.text, bold: true })] })); break;
-        case 'li': children.push(new Paragraph({ children: [new TextRun({ text: `• ${seg.text}` })], indent: { left: 360 } })); break;
-        case 'oli': children.push(new Paragraph({ children: [new TextRun({ text: `  ${seg.text}` })], indent: { left: 360 } })); break;
-        case 'equation': children.push(new Paragraph({ children: [new TextRun({ text: seg.text, font: 'Courier New', color: '6C3EE8', size: 20 })] })); break;
-        case 'block':
-          children.push(new Paragraph({ children: [new TextRun({ text: `[${(BLOCK_STYLES[seg.blockType] || BLOCK_STYLES.note).label}] ${seg.text}`, italics: true })] }));
+        case 'bold': children.push(new Paragraph({ children: [new TextRun({ text: cleanText(seg.text), bold: true })] })); break;
+        case 'li': children.push(new Paragraph({ children: [new TextRun({ text: `• ${cleanText(seg.text)}` })], indent: { left: 360 } })); break;
+        case 'oli': children.push(new Paragraph({ children: [new TextRun({ text: `  ${cleanText(seg.text)}` })], indent: { left: 360 } })); break;
+        case 'equation': children.push(new Paragraph({ children: [new TextRun({ text: latexToReadable(seg.text), font: 'Courier New', color: '6C3EE8', size: 20 })] })); break;
+        case 'block': {
+          const style = BLOCK_STYLES[seg.blockType] || BLOCK_STYLES.note;
+          children.push(new Paragraph({ children: [new TextRun({ text: `[${style.label}] ${cleanText(seg.text)}`, italics: true })] }));
           break;
+        }
         case 'code': children.push(new Paragraph({ children: [new TextRun({ text: seg.text, font: 'Courier New', size: 18 })], shading: { fill: 'F3F4F6' } })); break;
-        case 'p': if (seg.text?.trim()) children.push(new Paragraph({ text: seg.text })); break;
+        case 'p': if (cleanText(seg.text)?.trim()) children.push(new Paragraph({ text: cleanText(seg.text) })); break;
         case 'spacer': children.push(new Paragraph({ text: '' })); break;
         default: break;
       }
     });
   });
 
-  // Disclaimer
   children.push(
     new Paragraph({ text: '' }),
     new Paragraph({ text: 'Thank You', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-    new Paragraph({ children: [new TextRun({ text: 'This content is AI-generated. Always verify from authoritative sources. Not for commercial redistribution.', italics: true, color: '9CA3AF' })] }),
-    new Paragraph({ children: [new TextRun({ text: 'Built by Lohit R · lohitr.vercel.app', color: 'C4C4C4', size: 16 })] })
+    new Paragraph({ children: [new TextRun({ text: 'This content is AI-generated. Always verify from authoritative sources.', italics: true, color: '9CA3AF' })] }),
+    new Paragraph({ children: [new TextRun({ text: `Built by Lohit R · lohitr.vercel.app · © ${new Date().getFullYear()}`, color: 'C4C4C4', size: 16 })] })
   );
 
   const docx = new Document({ sections: [{ children }] });
@@ -848,8 +1125,10 @@ export function exportToMarkdown(title, outputType, results, chapters) {
   const today = new Date().toLocaleDateString();
   let md = `# ${title}\n\n`;
   md += `> **${outputType}** · AI Generated by PlanForge AI · ${today}\n\n---\n\n`;
-  sortedResults.forEach((r) => { md += r.content + '\n\n---\n\n'; });
-  md += `\n---\n*Built by Lohit R · lohitr.vercel.app · Content is AI-generated, verify before use.*\n`;
+  sortedResults.forEach((r) => {
+    md += r.content.replace(/---TOPIC_END---/g, '') + '\n\n---\n\n';
+  });
+  md += `\n---\n*Built by Lohit R · lohitr.vercel.app · © ${new Date().getFullYear()} · Content is AI-generated, verify before use.*\n`;
 
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
