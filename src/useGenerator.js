@@ -92,57 +92,93 @@ Rules:
 - Return ONLY the JSON object, no other text`;
 }
 
+// FORMAT_RULES is a capabilities manifest — it tells the AI what the renderer
+// can turn its text into visually. Update this whenever the renderer gains or
+// loses a feature. A text-only LLM will default to plain prose unless it knows
+// what visual outputs are available and how to trigger them.
 const FORMAT_RULES = `
-MANDATORY FORMATTING — follow EXACTLY or the PDF will be broken:
+YOUR RESPONSE BECOMES A VISUAL PDF — this system converts specific markdown patterns
+into rich visual elements. Use them actively. A response full of structure produces
+a beautiful study document; a plain-text response produces a boring wall of text.
 
-EQUATIONS — wrap ALL math in single dollar signs: $expression$
-  Example: $E = mc^2$, $dH = -890 kJ/mol$, $pH = -log[H+]$
-  NEVER write math as plain text.
+=== VISUAL ELEMENTS YOU CAN PRODUCE ===
 
-CHEMISTRY (CRITICAL — ASCII only, no Unicode subscripts or special symbols):
-  Arrows: use -> (hyphen then greater-than), NEVER use !' or the arrow symbol or =>
-    Correct: CH4 + 2O2 -> CO2 + 2H2O
-    Wrong:   CH4 + 2O2 !' CO2 + 2H2O
-  Subscripts: write as plain inline number, NO underscore, NO Unicode subscripts
-    Correct: CH4  CO2  H2O  NH3  H2SO4  C2H4  NH4Cl
-    Wrong:   CH_4  CH₄  C_(2)H_(4)  NH_{4}
-  Delta: write as lowercase d — dH, dG, dS, dHf
-    Correct: dH = -890 kJ/mol
-    Wrong:   DeltaH  Delta H  dH  "DeltaH"
+[1] EQUATION BOX — purple styled monospace box, centered on the page
+    Trigger: wrap in single dollar signs on its own line or inline
+    Syntax:  $expression$
+    Use for: ALL math, formulas, scientific constants — NEVER write them as plain text
+    Examples:
+      $E = mc^2$
+      $pH = -log[H+]$
+      $PV = nRT$
+      $dH = -890 kJ/mol$
 
-CALLOUT BLOCKS (keep content SHORT, no headings inside):
-  :::definition
-  [2-3 plain sentences only, no ### headings inside]
-  :::
+[2] FLOWCHART / PROCESS DIAGRAM — rendered as a PNG image in the PDF
+    Trigger: :::mermaid block containing a valid Mermaid graph
+    Syntax:
+      :::mermaid
+      graph TD
+        A[Start] --> B[Step]
+        B --> C[End]
+      :::
+    Use for: reaction pathways, algorithm steps, decision trees, multi-step processes
+    Rules:
+      - Max 8 nodes, node labels under 20 chars
+      - Use --> for arrows (ASCII only, no Unicode arrows)
+      - Edge labels: -->|label| node  (NO extra > after the closing pipe)
+      - No Unicode or special characters anywhere in the diagram
+      - Only add when a clear sequential flow or process actually exists
+      - Max 1 diagram per topic section
 
-  :::example
-  [numbered steps only, no ### headings]
-  :::
+[3] CALLOUT BOXES — colored highlighted boxes with labeled headers
+    Each block type renders with its own color and icon:
+      :::definition  → blue box   — key terms, precise definitions
+      :::example     → green box  — worked examples, solved problems, step-by-step walkthroughs
+      :::keypoint    → orange box — must-remember facts, exam tips, key conclusions
+      :::note        → green box  — extra context, clarifications, helpful tips
+    Syntax:
+      :::definition
+      The process by which...  (plain sentences or bullets, max 6 lines)
+      :::
+    Rules:
+      - NEVER leave a block empty
+      - NEVER put ### headings inside a block
+      - NEVER use :::warning (removed)
+      - Max 6 lines of content inside any block
 
-  :::keypoint
-  [3-5 bullet points max]
-  :::
+[4] TABLE — styled table, purple header row, alternating row colors
+    Trigger: markdown pipe table
+    Syntax:  | Col1 | Col2 | Col3 |\\n|---|---|---|\\n| data | data | data |
+    Use for: comparisons, property lists, reaction conditions, data summaries
 
-  :::note
-  [1-2 sentences only]
-  :::
+[5] CODE BLOCK — monospace styled box
+    Trigger: triple backticks
+    Syntax:  \`\`\`\\ncode here\\n\`\`\`
+    Use for: algorithms, pseudocode, structured data
 
-  RULES for callouts:
-  - NEVER create an empty ::: block
-  - NEVER put ### headings inside a ::: block
-  - NEVER use :::warning (removed from system)
-  - Keep total content inside a block under 6 lines
+=== CHEMISTRY RULES — ASCII ONLY (critical: Unicode breaks the PDF font) ===
 
-DIAGRAMS (only when a real process/flow exists, max 1 per topic):
-  :::mermaid
-  graph TD
-    A[Short label] --> B[Short label]
-  :::
-  Rules: max 8 nodes, labels under 20 chars, ASCII only in labels, no Unicode.
-  Skip the mermaid block entirely if no clear flowchart exists — do NOT force it.
+Reaction arrows: use ->  (hyphen then greater-than sign)
+  Correct: CH4 + 2O2 -> CO2 + 2H2O        dH = -890 kJ/mol
+  Wrong:   CH4 + 2O2 !' CO2 + 2H2O        (never use !' or the arrow character)
 
-TABLES: | Col1 | Col2 |\\n|---|---|\\n| data | data |
+Subscripts: plain number, no underscore, no Unicode subscript characters
+  Correct: CH4  CO2  H2O  NH3  H2SO4  C2H4  NH4Cl  C6H12O6
+  Wrong:   CH_4  CH_{4}  CH₄  C_(2)H_(4)
+
+Energy / thermodynamic changes: use lowercase d prefix
+  Correct: dH = -285 kJ/mol   dG < 0   dS > 0   dHf
+  Wrong:   DeltaH   Delta H   Delta(H)
+
+Greek letters in non-chemistry contexts: spell out — alpha, beta, theta, pi, sigma
+
+=== GENERAL RULES ===
+- Use at least one visual element (box, table, or diagram) per major section
+- All equations in $...$ — never write a formula as plain prose
+- Use :::example for every worked problem — it renders as a distinct green box
+- Use :::definition for every key term introduced for the first time
 `;
+
 
 function buildWorkerPrompt(chapterName, topicName, subtopics, outputType, options, ragContext, webContext, sectionTypes) {
   const { depth = 'Detailed', audience = 'Student' } = options;
