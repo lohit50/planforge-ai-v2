@@ -1386,7 +1386,7 @@ export default function App() {
           {/* Developer footer */}
           <div style={{ maxWidth: 1200, margin: '32px auto 0', borderTop: `1px solid ${border}`, padding: '16px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ fontSize: 12, color: muted }}>
-              © 2025 PlanForge AI · AI-generated content may contain inaccuracies. Verify important information from authoritative sources.
+              © {new Date().getFullYear()} PlanForge AI · AI-generated content may contain inaccuracies. Verify important information from authoritative sources.
             </div>
             <div style={{ fontSize: 12, color: muted }}>
               Built by{' '}
