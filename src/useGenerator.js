@@ -93,17 +93,55 @@ Rules:
 }
 
 const FORMAT_RULES = `
-MANDATORY FORMATTING — follow exactly:
-1. Wrap ALL equations: $$expression$$ (e.g. The energy is $$E = mc^2$$)
-   Multi-line block equation: put $$ on its own line, equation, then $$ on closing line.
-2. Key definitions: :::definition\\n[content]\\n:::
-3. Worked examples: :::example\\n[content]\\n:::
-4. Important facts: :::keypoint\\n[content]\\n:::
-5. Common mistakes: :::warning\\n[content]\\n:::
-6. ONE Mermaid flowchart per major process/algorithm (graph TD or LR, max 8 nodes, short labels):
-   :::mermaid\\ngraph TD\\n  A[Step] --> B[Step]\\n:::
-7. Tables: | Header | Header |\\n|---|---|\\n| data | data |
-8. NEVER write math expressions in plain text — always use $$ wrappers
+MANDATORY FORMATTING — follow EXACTLY or the PDF will be broken:
+
+EQUATIONS — wrap ALL math in single dollar signs: $expression$
+  Example: $E = mc^2$, $dH = -890 kJ/mol$, $pH = -log[H+]$
+  NEVER write math as plain text.
+
+CHEMISTRY (CRITICAL — ASCII only, no Unicode subscripts or special symbols):
+  Arrows: use -> (hyphen then greater-than), NEVER use !' or the arrow symbol or =>
+    Correct: CH4 + 2O2 -> CO2 + 2H2O
+    Wrong:   CH4 + 2O2 !' CO2 + 2H2O
+  Subscripts: write as plain inline number, NO underscore, NO Unicode subscripts
+    Correct: CH4  CO2  H2O  NH3  H2SO4  C2H4  NH4Cl
+    Wrong:   CH_4  CH₄  C_(2)H_(4)  NH_{4}
+  Delta: write as lowercase d — dH, dG, dS, dHf
+    Correct: dH = -890 kJ/mol
+    Wrong:   DeltaH  Delta H  dH  "DeltaH"
+
+CALLOUT BLOCKS (keep content SHORT, no headings inside):
+  :::definition
+  [2-3 plain sentences only, no ### headings inside]
+  :::
+
+  :::example
+  [numbered steps only, no ### headings]
+  :::
+
+  :::keypoint
+  [3-5 bullet points max]
+  :::
+
+  :::note
+  [1-2 sentences only]
+  :::
+
+  RULES for callouts:
+  - NEVER create an empty ::: block
+  - NEVER put ### headings inside a ::: block
+  - NEVER use :::warning (removed from system)
+  - Keep total content inside a block under 6 lines
+
+DIAGRAMS (only when a real process/flow exists, max 1 per topic):
+  :::mermaid
+  graph TD
+    A[Short label] --> B[Short label]
+  :::
+  Rules: max 8 nodes, labels under 20 chars, ASCII only in labels, no Unicode.
+  Skip the mermaid block entirely if no clear flowchart exists — do NOT force it.
+
+TABLES: | Col1 | Col2 |\\n|---|---|\\n| data | data |
 `;
 
 function buildWorkerPrompt(chapterName, topicName, subtopics, outputType, options, ragContext, webContext, sectionTypes) {

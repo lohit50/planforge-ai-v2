@@ -56,7 +56,12 @@ async function imgUrlToPng(url) {
 
 // ─────────────────────────────────────────────────────────────────
 // Text helpers
+// NOTE: jsPDF Helvetica uses WinAnsi (CP1252) — only ASCII + Latin-1 renders.
+// Unicode chars like → ₄ Δ ≤ ∞ are NOT in CP1252 and will be dropped/corrupted.
+// All output must be ASCII-safe.
 // ─────────────────────────────────────────────────────────────────
+const YEAR = 2026;
+
 function latexToReadable(tex) {
   if (!tex) return '';
   let s = tex;
@@ -66,49 +71,68 @@ function latexToReadable(tex) {
     if (s === prev) break;
   }
   s = s
-    .replace(/\\alpha/g,'α').replace(/\\beta/g,'β').replace(/\\gamma/g,'γ')
-    .replace(/\\delta/g,'δ').replace(/\\epsilon/g,'ε').replace(/\\theta/g,'θ')
-    .replace(/\\lambda/g,'λ').replace(/\\mu/g,'μ').replace(/\\nu/g,'ν')
-    .replace(/\\pi/g,'π').replace(/\\rho/g,'ρ').replace(/\\sigma/g,'σ')
-    .replace(/\\tau/g,'τ').replace(/\\phi/g,'φ').replace(/\\omega/g,'ω')
-    .replace(/\\Delta/g,'Δ').replace(/\\Sigma/g,'Σ').replace(/\\Omega/g,'Ω')
-    .replace(/\\cdot/g,'·').replace(/\\times/g,'×').replace(/\\pm/g,'±')
-    .replace(/\\leq/g,'≤').replace(/\\geq/g,'≥').replace(/\\neq/g,'≠')
-    .replace(/\\approx/g,'≈').replace(/\\infty/g,'∞')
-    .replace(/\\rightarrow/g,'→').replace(/\\leftarrow/g,'←').replace(/\\to\b/g,'→')
-    .replace(/\\sqrt\{([^{}]+)\}/g,'√($1)')
+    // Greek — ASCII spellings (jsPDF cannot render Unicode Greek)
+    .replace(/\\alpha/g,'alpha').replace(/\\beta/g,'beta').replace(/\\gamma/g,'gamma')
+    .replace(/\\delta/g,'delta').replace(/\\epsilon/g,'epsilon').replace(/\\theta/g,'theta')
+    .replace(/\\lambda/g,'lambda').replace(/\\mu/g,'mu').replace(/\\nu/g,'nu')
+    .replace(/\\pi/g,'pi').replace(/\\rho/g,'rho').replace(/\\sigma/g,'sigma')
+    .replace(/\\tau/g,'tau').replace(/\\phi/g,'phi').replace(/\\omega/g,'omega')
+    .replace(/\\Delta/g,'Delta').replace(/\\Sigma/g,'Sigma').replace(/\\Omega/g,'Omega')
+    // Math operators — ASCII-safe
+    .replace(/\\cdot/g,'*').replace(/\\times/g,'x').replace(/\\pm/g,'+/-')
+    .replace(/\\leq/g,'<=').replace(/\\geq/g,'>=').replace(/\\neq/g,'!=')
+    .replace(/\\approx/g,'~').replace(/\\infty/g,'inf')
+    .replace(/\\rightarrow/g,' -> ').replace(/\\leftarrow/g,' <- ').replace(/\\to\b/g,' -> ')
+    .replace(/\\sqrt\{([^{}]+)\}/g,'sqrt($1)')
     .replace(/\\text\{([^{}]+)\}/g,'$1').replace(/\\mathrm\{([^{}]+)\}/g,'$1')
     .replace(/\\ln\b/g,'ln').replace(/\\log\b/g,'log').replace(/\\exp\b/g,'exp')
     .replace(/\\sin\b/g,'sin').replace(/\\cos\b/g,'cos').replace(/\\tan\b/g,'tan')
     .replace(/\\left\s*\(/g,'(').replace(/\\right\s*\)/g,')')
     .replace(/\\left\s*\[/g,'[').replace(/\\right\s*\]/g,']')
-    .replace(/\^{([^{}]*)}/g,'^($1)').replace(/_{([^{}]*)}/g,'_($1)')
-    .replace(/\^(-?[a-zA-Z0-9])/g,'^$1').replace(/_(-?[a-zA-Z0-9])/g,'_$1')
+    .replace(/\^{([^{}]*)}/g,'^($1)').replace(/_{([^{}]*)}/g,'($1)')
+    .replace(/\^(-?[a-zA-Z0-9])/g,'^$1').replace(/_(-?[a-zA-Z0-9])/g,'$1')
     .replace(/\\,/g,' ').replace(/\\!/g,'').replace(/\\:/g,' ').replace(/\\;/g,' ')
     .replace(/\\\\/g,' ').replace(/\\[a-zA-Z]+/g,'')
     .replace(/[{}]/g,'').replace(/\$+/g,'').replace(/\s{2,}/g,' ').trim();
   return s;
 }
 
-// Chemistry formatting — ARROWS first, subscripts second
+// Chemistry + Unicode → ASCII-safe (jsPDF Helvetica is WinAnsi — cannot render Unicode math/chemistry)
+// ARROWS first, then subscripts, then Unicode cleanup
 function fixChemistry(text) {
-  let s = text
-    .replace(/!'/g, '→')
-    .replace(/->(?!>)/g, '→')
-    .replace(/=>/g, '⇒')
-    .replace(/"H_f\b/g, 'ΔHf')
-    .replace(/"H\b/g, 'ΔH')
-    .replace(/\bDelta\s*H\b/g, 'ΔH')
-    .replace(/\\Delta\s*H/g, 'ΔH');
-  // Named chemical subscripts
+  let s = text;
+  // Arrows: all variants → ASCII ' -> '
   s = s
-    .replace(/\bC_6H_\{12\}O_6\b/g,'C₆H₁₂O₆').replace(/\bC_6H_{12}O_6\b/g,'C₆H₁₂O₆')
-    .replace(/\bH_2SO_4\b/g,'H₂SO₄').replace(/\bH_2CO_3\b/g,'H₂CO₃')
-    .replace(/\bCH_4\b/g,'CH₄').replace(/\bCO_2\b/g,'CO₂').replace(/\bH_2O\b/g,'H₂O')
-    .replace(/\bH_2\b/g,'H₂').replace(/\bO_2\b/g,'O₂').replace(/\bN_2\b/g,'N₂')
-    .replace(/\bNH_3\b/g,'NH₃').replace(/\bC_2H_5OH\b/g,'C₂H₅OH')
-    .replace(/\bH_3O\b/g,'H₃O').replace(/\bSO_4\b/g,'SO₄').replace(/\bNO_3\b/g,'NO₃')
-    .replace(/\bPO_4\b/g,'PO₄').replace(/\bCO_3\b/g,'CO₃').replace(/\bO_3\b/g,'O₃');
+    .replace(/!'/g, ' -> ')
+    .replace(/→/g, ' -> ').replace(/⟶/g, ' -> ').replace(/→/g, ' -> ')
+    .replace(/←/g, ' <- ').replace(/↔/g, ' <-> ')
+    .replace(/=>/g, ' => ').replace(/⇒/g, ' => ')
+    .replace(/(?<![<>])->(?!>)/g, ' -> ');  // bare -> with no context
+  // Delta: ΔH → dH, ΔG → dG, etc.
+  s = s
+    .replace(/"H_f\b/g, 'dHf').replace(/"H\b/g, 'dH')
+    .replace(/ΔH/g, 'dH').replace(/ΔG/g, 'dG').replace(/ΔS/g, 'dS')
+    .replace(/Δ\s*([A-Za-z])/g, 'd$1').replace(/Delta\s*([A-Za-z])/g, 'd$1')
+    .replace(/\\Delta\s*([A-Za-z])/g, 'd$1').replace(/Δ/g, 'd');
+  // Unicode subscripts → plain digits
+  s = s.replace(/[₀₁₂₃₄₅₆₇₈₉]/g, c => String('₀₁₂₃₄₅₆₇₈₉'.indexOf(c)));
+  // _n patterns (chemistry subscripts) → plain digit
+  s = s
+    .replace(/([A-Za-z])_\((\d+)\)/g, '$1$2')
+    .replace(/([A-Za-z])_\{(\d+)\}/g, '$1$2')
+    .replace(/([A-Za-z])_(\d+)/g, '$1$2');
+  // Other non-CP1252 math symbols → ASCII
+  s = s
+    .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/≠/g, '!=').replace(/≈/g, '~')
+    .replace(/∞/g, 'inf').replace(/√/g, 'sqrt').replace(/∑/g, 'sum').replace(/∫/g, 'int')
+    .replace(/°C/g, 'degC').replace(/°F/g, 'degF').replace(/°/g, 'deg')
+    // Greek letters (if still present after latexToReadable)
+    .replace(/α/g,'alpha').replace(/β/g,'beta').replace(/γ/g,'gamma').replace(/δ/g,'delta')
+    .replace(/ε/g,'epsilon').replace(/θ/g,'theta').replace(/λ/g,'lambda').replace(/μ/g,'mu')
+    .replace(/π/g,'pi').replace(/σ/g,'sigma').replace(/φ/g,'phi').replace(/ω/g,'omega')
+    .replace(/Σ/g,'Sigma').replace(/Ω/g,'Omega');
+  // Normalize spaces around arrows
+  s = s.replace(/ {3,}/g, '  ').replace(/ -> /g, ' -> ');
   return s;
 }
 
@@ -223,14 +247,29 @@ async function fetchWikipediaImage(query) {
 // ─────────────────────────────────────────────────────────────────
 // Mermaid → base64 PNG (must await all renders before PDF step)
 // ─────────────────────────────────────────────────────────────────
-async function renderMermaidToBase64(code) {
-  try {
-    const mermaid = (await import('mermaid')).default;
-    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose',
+let _mermaidInstance = null;
+async function getMermaid() {
+  if (!_mermaidInstance) {
+    const m = (await import('mermaid')).default;
+    m.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose',
       themeVariables: { primaryColor: '#EDE9FE', primaryBorderColor: '#6C3EE8',
         primaryTextColor: '#1A1A2E', lineColor: '#6C3EE8', fontFamily: 'helvetica,arial,sans-serif' } });
+    _mermaidInstance = m;
+  }
+  return _mermaidInstance;
+}
+
+const MERMAID_TYPES = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt|pie|gitGraph|mindmap|erDiagram|timeline|xychart)/i;
+
+async function renderMermaidToBase64(code) {
+  try {
+    const mermaid = await getMermaid();
+    // Normalize smart quotes and validate diagram type before rendering
+    const cleanCode = code.trim()
+      .replace(/[""]/g, '"').replace(/['']/g, "'");
+    if (!MERMAID_TYPES.test(cleanCode)) return null;
     const id = 'mmd' + Date.now() + Math.random().toString(36).slice(2, 7);
-    const { svg } = await mermaid.render(id, code.trim());
+    const { svg } = await mermaid.render(id, cleanCode);
     const cleanSvg = svg
       .replace(/@import\s+url\([^)]*\)[^;]*;/g, '')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (m) =>
@@ -402,18 +441,18 @@ export function parseMarkdownToSegments(markdown) {
 // warning blocks are skipped entirely (item 16: remove Common Mistakes)
 // ─────────────────────────────────────────────────────────────────
 const BLOCK_STYLES = {
-  definition: { bg: [239, 246, 255], border: [37, 99, 235],   label: 'Definition',   icon: '▶' },
-  example:    { bg: [240, 253, 244], border: [5,  150, 105],   label: 'Example',      icon: '✦' },
-  keypoint:   { bg: [255, 251, 235], border: [180, 83,  9],    label: 'Key Point',    icon: '★' },
-  theorem:    { bg: [245, 243, 255], border: [109, 40, 217],   label: 'Theorem',      icon: '■' },
-  note:       { bg: [240, 253, 244], border: [22, 163,  74],   label: 'Note',         icon: 'ℹ' },
-  mermaid:    { bg: [248, 250, 252], border: [100, 116, 139],  label: 'Diagram',      icon: '◈' },
+  definition: { bg: [239, 246, 255], border: [37, 99, 235],   label: 'Definition',   icon: '[D]' },
+  example:    { bg: [240, 253, 244], border: [5,  150, 105],   label: 'Example',      icon: '[E]' },
+  keypoint:   { bg: [255, 251, 235], border: [180, 83,  9],    label: 'Key Point',    icon: '[!]' },
+  theorem:    { bg: [245, 243, 255], border: [109, 40, 217],   label: 'Theorem',      icon: '[T]' },
+  note:       { bg: [240, 253, 244], border: [22, 163,  74],   label: 'Note',         icon: '[i]' },
+  mermaid:    { bg: [248, 250, 252], border: [100, 116, 139],  label: 'Diagram',      icon: '[~]' },
 };
 
 // Collect all mermaid keys from segments tree (including sub-segments)
 function* iterateMermaidKeys(segments) {
   for (const seg of segments) {
-    if (seg.type === 'block' && seg.blockType === 'mermaid') yield seg.rawText || seg.text;
+    if (seg.type === 'block' && seg.blockType === 'mermaid') yield (seg.rawText || seg.text).trim();
     if (seg.subSegments) yield* iterateMermaidKeys(seg.subSegments);
   }
 }
@@ -424,16 +463,43 @@ function* iterateMermaidKeys(segments) {
 function estimateBlockContentHeight(doc, subSegs, innerW) {
   let h = 0;
   for (const ss of subSegs) {
-    if (ss.type === 'p')      h += Math.max(1, doc.splitTextToSize(cleanText(ss.text), innerW).length) * 5.5 + 1;
-    else if (ss.type === 'li' || ss.type === 'oli') h += Math.max(1, doc.splitTextToSize(cleanText(ss.text), innerW - 5).length) * 5 + 1;
-    else if (ss.type === 'h2') h += 9;
-    else if (ss.type === 'h3') h += 8;
-    else if (ss.type === 'h4' || ss.type === 'bold') h += 7;
-    else if (ss.type === 'equation') h += Math.max(1, doc.splitTextToSize(latexToReadable(ss.text), innerW - 10).length) * 6 + 10;
-    else if (ss.type === 'table') h += (ss.rows?.length || 0) * 6.5 + 6;
-    else if (ss.type === 'spacer') h += 2;
+    if (ss.type === 'p') {
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+      const lines = doc.splitTextToSize(cleanText(ss.text || ''), innerW);
+      if (!lines[0]?.trim()) continue;
+      h += lines.length * 5.5 + 1;
+    } else if (ss.type === 'li' || ss.type === 'oli') {
+      doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
+      h += Math.max(1, doc.splitTextToSize(cleanText(ss.text || ''), innerW - 5).length) * 5 + 1;
+    } else if (ss.type === 'h2') {
+      h += 9;
+    } else if (ss.type === 'h3') {
+      h += 8;
+    } else if (ss.type === 'h4' || ss.type === 'bold') {
+      h += 7;
+    } else if (ss.type === 'equation') {
+      doc.setFontSize(9.5); doc.setFont('courier', 'normal');
+      h += Math.max(1, doc.splitTextToSize(fixChemistry(latexToReadable(ss.text || '')), innerW - 10).length) * 6 + 10;
+    } else if (ss.type === 'table') {
+      h += (ss.rows?.length || 0) * 6.5 + 6;
+    } else if (ss.type === 'spacer') {
+      h += 2;
+    }
   }
-  return Math.max(h, 6);
+  return h;
+}
+
+function hasVisibleContent(subSegs, plainText) {
+  if (subSegs && subSegs.length > 0) {
+    return subSegs.some(ss => {
+      const t = cleanText(ss.text || '');
+      if (['p','li','oli','bold','h2','h3','h4'].includes(ss.type)) return t.length > 0;
+      if (ss.type === 'equation') return (ss.text || '').trim().length > 0;
+      if (ss.type === 'table') return (ss.rows?.length || 0) > 0;
+      return false;
+    });
+  }
+  return cleanText(plainText || '').trim().length > 0;
 }
 
 // Render sub-segments inside a block box (no page breaks — block renders as unit)
@@ -463,7 +529,7 @@ function renderBlockSubSegs(doc, subSegs, x, startY, innerW) {
         doc.text(lines, x, cy); cy += lines.length * 5.5 + 2; break;
       }
       case 'equation': {
-        const eqText = latexToReadable(ss.text);
+        const eqText = fixChemistry(latexToReadable(ss.text || ''));
         const eqLines = doc.splitTextToSize(eqText, innerW - 10);
         const eqH = eqLines.length * 6 + 6;
         doc.setFillColor(245, 243, 255); doc.roundedRect(x, cy - 1, innerW, eqH, 1, 1, 'F');
@@ -881,7 +947,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
         }
 
         case 'equation': {
-          const eqText = latexToReadable(seg.text);
+          const eqText = fixChemistry(latexToReadable(seg.text || ''));
           const eqLs = doc.splitTextToSize(eqText, TW - 20);
           const eqH = eqLs.length * 6 + 12;
           y = ensureSpace(y, eqH, result.chapterName);
@@ -924,7 +990,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
 
           // Mermaid block
           if (seg.blockType === 'mermaid') {
-            const key = seg.rawText || seg.text;
+            const key = (seg.rawText || seg.text).trim();
             const img = mermaidCache.get(key);
             if (img) {
               const MAX_DIAG_W = TW - 4, MAX_DIAG_H = 72;
@@ -959,6 +1025,7 @@ export async function exportToPDF(title, outputType, chapters, results, options 
 
           // Standard callout block — render sub-segments if available
           const subSegs = seg.subSegments || [];
+          if (!hasVisibleContent(subSegs, seg.text)) break;
           const innerW = TW - 14;
           const contentH = subSegs.length > 0
             ? estimateBlockContentHeight(doc, subSegs, innerW)
