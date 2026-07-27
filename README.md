@@ -144,3 +144,7 @@ npm run preview  # Preview production build
 ---
 
 *PlanForge AI v2.0 — Built for Dhanusiya*
+
+---
+
+Built by **Lohit R** — [lohit.space](https://lohit.space)
